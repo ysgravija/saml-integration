@@ -2,7 +2,10 @@ module saml-poc
 
 go 1.22
 
-require github.com/crewjam/saml v0.5.1
+require (
+	github.com/crewjam/saml v0.5.1
+	github.com/lib/pq v1.10.9
+)
 
 require (
 	github.com/beevik/etree v1.5.0 // indirect
