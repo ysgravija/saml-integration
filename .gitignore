@@ -1,0 +1,10 @@
+*.crt
+*.key
+*.pem
+*.csr
+*.p12
+*.pfx
+*.p12
+
+
+saml-server
