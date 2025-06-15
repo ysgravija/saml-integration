@@ -21,6 +21,62 @@ func NewDebugHandler(cfg *config.Config) *DebugHandler {
 
 // ServeHTTP handles the debug page request
 func (h *DebugHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Handle POST request to clear cookies
+	if r.Method == "POST" && r.FormValue("action") == "clear_cookies" {
+		h.clearCookies(w, r)
+		return
+	}
+
+	// Show debug page
+	h.showDebugPage(w, r)
+}
+
+// clearCookies clears SAML session cookies
+func (h *DebugHandler) clearCookies(w http.ResponseWriter, r *http.Request) {
+	// Clear the SAML session cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "saml_" + h.config.SAML.EntityID,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   false, // Set to true in production with HTTPS
+	})
+
+	// Also try to clear common SAML cookie names
+	cookieNames := []string{
+		"saml_session",
+		"SAML_SESSION",
+		"samlsession",
+		"token",
+	}
+
+	for _, name := range cookieNames {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   false,
+		})
+	}
+
+	// Redirect back to debug page with success message
+	http.Redirect(w, r, "/debug?cleared=true", http.StatusSeeOther)
+}
+
+// showDebugPage displays the debug information page
+func (h *DebugHandler) showDebugPage(w http.ResponseWriter, r *http.Request) {
+	// Check if cookies were just cleared
+	clearedMessage := ""
+	if r.URL.Query().Get("cleared") == "true" {
+		clearedMessage = `
+		<div class="success-message">
+			Cookies cleared successfully! You can now test the SAML authentication flow.
+		</div>`
+	}
+
 	html := fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -84,6 +140,42 @@ func (h *DebugHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
             border-radius: 5px;
             margin: 10px 0;
         }
+        .success-message {
+            background: #27ae60;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .cookie-section {
+            background: #3498db;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .cookie-section h3 {
+            margin-top: 0;
+            color: white;
+        }
+        .clear-button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .clear-button:hover {
+            background: #c0392b;
+        }
+        .cookie-info {
+            font-size: 14px;
+            margin-top: 10px;
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
@@ -92,6 +184,21 @@ func (h *DebugHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         
         <div class="warning">
             This page shows configuration details and should not be accessible in production.
+        </div>
+        
+        %s
+        
+        <div class="cookie-section">
+            <h3>Session Management</h3>
+            <p>Clear SAML session cookies to test the authentication flow from the beginning.</p>
+            <form method="POST" style="margin: 0;">
+                <input type="hidden" name="action" value="clear_cookies">
+                <button type="submit" class="clear-button">Clear Session Cookies</button>
+            </form>
+            <div class="cookie-info">
+                This will clear SAML session cookies and redirect you back to this page.
+                After clearing cookies, visiting the home page will trigger a new SAML authentication.
+            </div>
         </div>
         
         <div class="section">
@@ -175,12 +282,14 @@ func (h *DebugHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         </div>
         
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bdc3c7;">
-            <a href="/home" style="color: #3498db; text-decoration: none;">Back to Home</a>
+            <a href="/home" style="color: #3498db; text-decoration: none;">Back to Home</a> |
+            <a href="/" style="color: #3498db; text-decoration: none;">Test SAML Flow</a>
         </div>
     </div>
 </body>
 </html>
     `,
+		clearedMessage,
 		h.config.ServerAddress(),
 		h.config.Database.Host, h.config.Database.Port,
 		h.config.Database.DBName,
