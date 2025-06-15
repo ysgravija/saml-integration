@@ -87,6 +87,11 @@ func main() {
 
 	fmt.Println("Server started at http://localhost:8080")
 	fmt.Println("Database connection established")
+	fmt.Printf("JIT (Just-In-Time) user creation: %s\n", map[bool]string{true: "ENABLED", false: "DISABLED"}[EnableJIT])
+	if EnableJIT {
+		fmt.Printf("  - Default user status: %s\n", map[bool]string{true: "Active", false: "Inactive"}[DefaultUserActive])
+		fmt.Printf("  - Required attributes: %s\n", map[bool]string{true: "Enforced", false: "Optional"}[RequiredAttributesForJIT])
+	}
 	fmt.Println("SAML endpoints:")
 	fmt.Println("  - SSO: http://localhost:8080/saml/sso")
 	fmt.Println("  - ACS: http://localhost:8080/saml/acs")
@@ -104,18 +109,18 @@ func databaseValidationMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Extract user email from SAML session
-		userEmail := extractEmailFromSession(session, r)
+		// Extract user attributes from SAML session
+		userEmail, firstName, lastName := extractUserAttributesFromSession(session, r)
 		if userEmail == "" {
 			log.Println("No email found in SAML session")
 			http.Error(w, "No email found in SAML session", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("Validating user from SAML session: %s", userEmail)
+		log.Printf("Validating user from SAML session: %s (firstName: '%s', lastName: '%s')", userEmail, firstName, lastName)
 
-		// Validate user against database
-		authorized, user, err := database.IsUserAuthorized(userEmail)
+		// Validate user against database with JIT support
+		authorized, user, err := database.IsUserAuthorizedWithJIT(userEmail, firstName, lastName)
 		if err != nil {
 			log.Printf("Database error during user validation: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -135,47 +140,105 @@ func databaseValidationMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// extractEmailFromSession extracts email from various possible SAML attributes
-func extractEmailFromSession(session samlsp.Session, r *http.Request) string {
-	var userEmail string
-
-	// Try to get email from session attributes
+// extractUserAttributesFromSession extracts user attributes (email, first name, last name) from SAML session
+func extractUserAttributesFromSession(session samlsp.Session, r *http.Request) (email, firstName, lastName string) {
+	// Try to get attributes from session
 	if sessionWithAttrs, ok := session.(samlsp.SessionWithAttributes); ok {
 		attrs := sessionWithAttrs.GetAttributes()
-		// Try different common attribute names for email
-		if email := attrs.Get("email"); email != "" {
-			userEmail = email
-		} else if email := attrs.Get("emailAddress"); email != "" {
-			userEmail = email
-		} else if email := attrs.Get("mail"); email != "" {
-			userEmail = email
-		} else if email := attrs.Get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"); email != "" {
-			userEmail = email
+
+		// Extract email from various possible attribute names
+		if emailAttr := attrs.Get("email"); emailAttr != "" {
+			email = emailAttr
+		} else if emailAttr := attrs.Get("emailAddress"); emailAttr != "" {
+			email = emailAttr
+		} else if emailAttr := attrs.Get("mail"); emailAttr != "" {
+			email = emailAttr
+		} else if emailAttr := attrs.Get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress"); emailAttr != "" {
+			email = emailAttr
+		}
+
+		// Extract first name from various possible attribute names
+		if firstNameAttr := attrs.Get("firstName"); firstNameAttr != "" {
+			firstName = firstNameAttr
+		} else if firstNameAttr := attrs.Get("givenName"); firstNameAttr != "" {
+			firstName = firstNameAttr
+		} else if firstNameAttr := attrs.Get("given_name"); firstNameAttr != "" {
+			firstName = firstNameAttr
+		} else if firstNameAttr := attrs.Get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"); firstNameAttr != "" {
+			firstName = firstNameAttr
+		}
+
+		// Extract last name from various possible attribute names
+		if lastNameAttr := attrs.Get("lastName"); lastNameAttr != "" {
+			lastName = lastNameAttr
+		} else if lastNameAttr := attrs.Get("surname"); lastNameAttr != "" {
+			lastName = lastNameAttr
+		} else if lastNameAttr := attrs.Get("sn"); lastNameAttr != "" {
+			lastName = lastNameAttr
+		} else if lastNameAttr := attrs.Get("family_name"); lastNameAttr != "" {
+			lastName = lastNameAttr
+		} else if lastNameAttr := attrs.Get("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"); lastNameAttr != "" {
+			lastName = lastNameAttr
 		}
 	}
 
-	// If we couldn't get email from attributes, try using AttributeFromContext helper
-	if userEmail == "" {
-		userEmail = samlsp.AttributeFromContext(r.Context(), "email")
-		if userEmail == "" {
-			userEmail = samlsp.AttributeFromContext(r.Context(), "emailAddress")
+	// If we couldn't get attributes from session attributes, try using AttributeFromContext helper
+	if email == "" {
+		email = samlsp.AttributeFromContext(r.Context(), "email")
+		if email == "" {
+			email = samlsp.AttributeFromContext(r.Context(), "emailAddress")
 		}
-		if userEmail == "" {
-			userEmail = samlsp.AttributeFromContext(r.Context(), "mail")
+		if email == "" {
+			email = samlsp.AttributeFromContext(r.Context(), "mail")
 		}
-		if userEmail == "" {
-			userEmail = samlsp.AttributeFromContext(r.Context(), "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")
+		if email == "" {
+			email = samlsp.AttributeFromContext(r.Context(), "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress")
+		}
+	}
+
+	if firstName == "" {
+		firstName = samlsp.AttributeFromContext(r.Context(), "firstName")
+		if firstName == "" {
+			firstName = samlsp.AttributeFromContext(r.Context(), "givenName")
+		}
+		if firstName == "" {
+			firstName = samlsp.AttributeFromContext(r.Context(), "given_name")
+		}
+		if firstName == "" {
+			firstName = samlsp.AttributeFromContext(r.Context(), "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname")
+		}
+	}
+
+	if lastName == "" {
+		lastName = samlsp.AttributeFromContext(r.Context(), "lastName")
+		if lastName == "" {
+			lastName = samlsp.AttributeFromContext(r.Context(), "surname")
+		}
+		if lastName == "" {
+			lastName = samlsp.AttributeFromContext(r.Context(), "sn")
+		}
+		if lastName == "" {
+			lastName = samlsp.AttributeFromContext(r.Context(), "family_name")
+		}
+		if lastName == "" {
+			lastName = samlsp.AttributeFromContext(r.Context(), "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname")
 		}
 	}
 
 	// If still no email, try to get it from the NameID (common in test environments)
-	if userEmail == "" {
+	if email == "" {
 		if jwtSession, ok := session.(*samlsp.JWTSessionClaims); ok {
-			userEmail = jwtSession.Subject
+			email = jwtSession.Subject
 		}
 	}
 
-	return userEmail
+	return email, firstName, lastName
+}
+
+// extractEmailFromSession extracts email from SAML session (kept for backward compatibility)
+func extractEmailFromSession(session samlsp.Session, r *http.Request) string {
+	email, _, _ := extractUserAttributesFromSession(session, r)
+	return email
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
@@ -186,8 +249,8 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract user email from session
-	userEmail := extractEmailFromSession(session, r)
+	// Extract user attributes from session
+	userEmail, _, _ := extractUserAttributesFromSession(session, r)
 	if userEmail == "" {
 		log.Println("No email found in SAML session")
 		http.Error(w, "No email found in SAML session", http.StatusBadRequest)
@@ -310,17 +373,19 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 		`, session)
 
 		// Try to extract email
-		userEmail := extractEmailFromSession(session, r)
+		userEmail, firstName, lastName := extractUserAttributesFromSession(session, r)
 		if userEmail != "" {
 			fmt.Fprintf(w, `
 				<div class="section success">
-					<h3>Email Extracted</h3>
+					<h3>User Attributes Extracted</h3>
 					<p><strong>Email:</strong> %s</p>
+					<p><strong>First Name:</strong> %s</p>
+					<p><strong>Last Name:</strong> %s</p>
 				</div>
-			`, userEmail)
+			`, userEmail, firstName, lastName)
 
-			// Check database authorization
-			authorized, user, err := database.IsUserAuthorized(userEmail)
+			// Check database authorization with JIT
+			authorized, user, err := database.IsUserAuthorizedWithJIT(userEmail, firstName, lastName)
 			if err != nil {
 				fmt.Fprintf(w, `
 					<div class="section error">
@@ -412,6 +477,13 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 		</div>
 		<div class="section info">
+			<h3>JIT Configuration</h3>
+			<p><strong>JIT Enabled:</strong> %t</p>
+			<p><strong>Default User Active:</strong> %t</p>
+			<p><strong>Required Attributes for JIT:</strong> %t</p>
+			<p><em>JIT (Just-In-Time) user creation automatically creates users in the database when they successfully authenticate via SAML but don't exist in the system yet.</em></p>
+		</div>
+		<div class="section info">
 			<h3>Useful Links</h3>
 			<ul>
 				<li><a href="/">Home (Start SAML Auth)</a></li>
@@ -421,5 +493,5 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 		</div>
 		</body>
 		</html>
-	`)
+	`, EnableJIT, DefaultUserActive, RequiredAttributesForJIT)
 }
