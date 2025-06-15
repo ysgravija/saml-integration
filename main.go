@@ -223,7 +223,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		<body>
 			<div class="header">
 				<h1>Welcome, %s %s!</h1>
-				<p>SAML Authentication Successful ✅</p>
+				<p>SAML Authentication Successful</p>
 			</div>
 			<div class="content">
 				<div class="user-info">
@@ -290,13 +290,13 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 			</style>
 		</head>
 		<body>
-			<h1>🔍 SAML Debug Information</h1>
+			<h1>SAML Debug Information</h1>
 	`)
 
 	if session == nil {
 		fmt.Fprintf(w, `
 			<div class="section error">
-				<h3>❌ No SAML Session</h3>
+				<h3>No SAML Session</h3>
 				<p>No SAML session found. User is not authenticated.</p>
 				<p><a href="/">Click here to start SAML authentication</a></p>
 			</div>
@@ -304,7 +304,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 	} else {
 		fmt.Fprintf(w, `
 			<div class="section success">
-				<h3>✅ SAML Session Found</h3>
+				<h3>SAML Session Found</h3>
 				<p><strong>Session Type:</strong> %T</p>
 			</div>
 		`, session)
@@ -314,7 +314,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 		if userEmail != "" {
 			fmt.Fprintf(w, `
 				<div class="section success">
-					<h3>✅ Email Extracted</h3>
+					<h3>Email Extracted</h3>
 					<p><strong>Email:</strong> %s</p>
 				</div>
 			`, userEmail)
@@ -324,14 +324,14 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				fmt.Fprintf(w, `
 					<div class="section error">
-						<h3>❌ Database Error</h3>
+						<h3>Database Error</h3>
 						<p><strong>Error:</strong> %v</p>
 					</div>
 				`, err)
 			} else if !authorized {
 				fmt.Fprintf(w, `
 					<div class="section error">
-						<h3>❌ User Not Authorized</h3>
+						<h3>User Not Authorized</h3>
 						<p>User exists in database: %t</p>
 						<p>User is active: %t</p>
 					</div>
@@ -339,7 +339,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 			} else {
 				fmt.Fprintf(w, `
 					<div class="section success">
-						<h3>✅ User Authorized</h3>
+						<h3>User Authorized</h3>
 						<p><strong>Name:</strong> %s %s</p>
 						<p><strong>Email:</strong> %s</p>
 						<p><strong>Status:</strong> %s</p>
@@ -350,7 +350,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			fmt.Fprintf(w, `
 				<div class="section error">
-					<h3>❌ No Email Found</h3>
+					<h3>No Email Found</h3>
 					<p>Could not extract email from SAML session.</p>
 				</div>
 			`)
@@ -361,7 +361,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 			attrs := sessionWithAttrs.GetAttributes()
 			fmt.Fprintf(w, `
 				<div class="section info">
-					<h3>📋 SAML Attributes</h3>
+					<h3>SAML Attributes</h3>
 					<pre>%+v</pre>
 				</div>
 			`, attrs)
@@ -370,7 +370,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 		// Show raw session data
 		fmt.Fprintf(w, `
 			<div class="section info">
-				<h3>🔧 Raw Session Data</h3>
+				<h3>Raw Session Data</h3>
 				<pre>%+v</pre>
 			</div>
 		`, session)
@@ -379,7 +379,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 	// Show database users
 	fmt.Fprintf(w, `
 		<div class="section info">
-			<h3>👥 Database Users</h3>
+			<h3>Database Users</h3>
 			<p>Users authorized for this application:</p>
 	`)
 
@@ -412,7 +412,7 @@ func debugHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `
 		</div>
 		<div class="section info">
-			<h3>🔗 Useful Links</h3>
+			<h3>Useful Links</h3>
 			<ul>
 				<li><a href="/">Home (Start SAML Auth)</a></li>
 				<li><a href="/saml/metadata">SAML Metadata</a></li>
